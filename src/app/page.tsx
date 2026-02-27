@@ -46,7 +46,7 @@ export default function Home() {
 
   // Custom Cursor Logic & Hero Parallax
   useLayoutEffect(() => {
-    let ctx = gsap.context(() => {
+    const ctx = gsap.context(() => {
       const onMouseMove = (e: MouseEvent) => {
         // Cursor
         gsap.to(cursorRef.current, {
@@ -103,7 +103,7 @@ export default function Home() {
   useLayoutEffect(() => {
     if (windowDimensions.width === 0) return;
 
-    let ctx = gsap.context(() => {
+    const ctx = gsap.context(() => {
       // Pinning the main track
       ScrollTrigger.create({
         trigger: sectionRef.current,
