@@ -184,7 +184,7 @@ export default function Home() {
       const tl2 = gsap.timeline({
         scrollTrigger: {
           trigger: sectionRef.current,
-          start: "center top", // Start expanding cards midway through the scroll
+          start: "top top", // Explode right alongside the car's movement
           end: "bottom bottom",
           scrub: true,
         }
