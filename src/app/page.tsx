@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useRef, useLayoutEffect, useState, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
@@ -12,6 +12,7 @@ export default function Home() {
   const carRef = useRef<HTMLImageElement>(null);
   const trailRef = useRef<HTMLDivElement>(null);
   const valueTextRef = useRef<HTMLDivElement>(null);
+  const progressBarRef = useRef<HTMLDivElement>(null);
 
   const lettersRef = useRef<Array<HTMLSpanElement | null>>([]);
   const box1Ref = useRef<HTMLDivElement>(null);
@@ -23,430 +24,378 @@ export default function Home() {
   const cursorRef = useRef<HTMLDivElement>(null);
   const cursorDotRef = useRef<HTMLDivElement>(null);
 
-  // Parallax Hero Container
-  const heroContainerRef = useRef<HTMLDivElement>(null);
-  const heroGridRef = useRef<HTMLDivElement>(null);
+  // SSR-safe: initialize to 0, set in useEffect
+  const [isClient, setIsClient] = useState(false);
 
-  const [windowDimensions, setWindowDimensions] = useState({
-    width: typeof window !== 'undefined' ? window.innerWidth : 0,
-    height: typeof window !== 'undefined' ? window.innerHeight : 0,
-  });
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
-  // Track Window Resize
-  useLayoutEffect(() => {
-    const handleResize = () => {
-      setWindowDimensions({
-        width: window.innerWidth,
-        height: window.innerHeight,
+  // Custom Cursor Logic
+  useEffect(() => {
+    if (!isClient) return;
+
+    const onMouseMove = (e: MouseEvent) => {
+      gsap.to(cursorRef.current, {
+        x: e.clientX,
+        y: e.clientY,
+        duration: 0.5,
+        ease: "power3.out"
+      });
+      gsap.to(cursorDotRef.current, {
+        x: e.clientX,
+        y: e.clientY,
+        duration: 0.1,
+        ease: "none"
       });
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
-  // Custom Cursor Logic & Hero Parallax
-  useLayoutEffect(() => {
-    const ctx = gsap.context(() => {
-      const onMouseMove = (e: MouseEvent) => {
-        // Cursor
-        gsap.to(cursorRef.current, {
-          x: e.clientX,
-          y: e.clientY,
-          duration: 0.6,
-          ease: "power3.out"
-        });
-        gsap.to(cursorDotRef.current, {
-          x: e.clientX,
-          y: e.clientY,
-          duration: 0.1,
-          ease: "none"
-        });
+    const onMouseDown = () => {
+      gsap.to(cursorRef.current, { scale: 0.8, duration: 0.2 });
+    };
+    const onMouseUp = () => {
+      gsap.to(cursorRef.current, { scale: 1, duration: 0.2, ease: "elastic.out(1, 0.3)" });
+    };
 
-        // Hero Parallax
-        if (heroContainerRef.current && heroGridRef.current) {
-          const rect = heroContainerRef.current.getBoundingClientRect();
-          const x = (e.clientX - rect.left) / rect.width - 0.5;
-          const y = (e.clientY - rect.top) / rect.height - 0.5;
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
 
-          gsap.to(heroGridRef.current, {
-            x: x * 30, // Move grid slightly
-            y: y * 30,
-            rotationY: x * 10,
-            rotationX: -y * 10,
-            ease: "power2.out",
-            duration: 1
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isClient]);
+
+  // GSAP Scroll Animation - Core
+  useEffect(() => {
+    if (!isClient) return;
+
+    // Small delay to ensure DOM is fully rendered and measured
+    const timer = setTimeout(() => {
+      const ctx = gsap.context(() => {
+        const car = carRef.current;
+        const trail = trailRef.current;
+        const section = sectionRef.current;
+        const track = trackRef.current;
+        const progressBar = progressBarRef.current;
+        const letters = lettersRef.current.filter((el): el is HTMLSpanElement => el !== null);
+        const valueRect = valueTextRef.current?.getBoundingClientRect();
+
+        if (!car || !trail || !section || !track) return;
+
+        const letterOffsets: number[] = [];
+        if (valueRect) {
+          letters.forEach((letter) => {
+            const letterRect = letter.getBoundingClientRect();
+            letterOffsets.push(letterRect.left - valueRect.left);
           });
         }
-      };
 
-      const onMouseDown = () => {
-        gsap.to(cursorRef.current, { scale: 0.8, duration: 0.2 });
-      };
-      const onMouseUp = () => {
-        gsap.to(cursorRef.current, { scale: 1, duration: 0.2, ease: "elastic.out(1, 0.3)" });
-      };
+        const roadWidth = window.innerWidth;
+        const carWidth = car.getBoundingClientRect().width || 150;
+        const endX = roadWidth + carWidth; // Car fully disappears off the right edge
 
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mousedown', onMouseDown);
-      window.addEventListener('mouseup', onMouseUp);
-
-      return () => {
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mousedown', onMouseDown);
-        window.removeEventListener('mouseup', onMouseUp);
-      };
-    });
-    return () => ctx.revert();
-  }, []);
-
-  // GSAP Scroll Animation
-  useLayoutEffect(() => {
-    if (windowDimensions.width === 0) return;
-
-    const ctx = gsap.context(() => {
-      // Pinning the main track
-      ScrollTrigger.create({
-        trigger: sectionRef.current,
-        start: "top top",
-        end: "bottom bottom",
-        pin: trackRef.current,
-      });
-
-      const roadWidth = windowDimensions.width;
-      const carRect = carRef.current?.getBoundingClientRect();
-      const carWidth = carRect ? carRect.width : 250;
-      // Make the car drive completely off the right edge of the screen
-      const endX = roadWidth + carWidth;
-
-      const letters = lettersRef.current.filter((el): el is HTMLSpanElement => el !== null);
-      const valueRect = valueTextRef.current?.getBoundingClientRect();
-
-      // Ensure letters are absolutely positioned relative to the centered container
-      // and pre-calculate their offset positions.
-      const letterOffsets: number[] = [];
-      if (valueRect) {
-        letters.forEach((letter) => {
-          gsap.set(letter, { position: 'relative' }); // Changed to relative for flex flow
-          // Calculate offset relative to the container for correct timing
-          const letterRect = letter.getBoundingClientRect();
-          letterOffsets.push(letterRect.left - valueRect.left);
+        // Stat boxes — initial hidden state
+        gsap.set([box1Ref.current, box2Ref.current, box3Ref.current, box4Ref.current], {
+          opacity: 0,
+          y: 60,
+          scale: 0.85,
         });
-      }
 
-      const tl = gsap.timeline({
-        scrollTrigger: {
-          trigger: sectionRef.current,
-          start: "top top",
-          end: "bottom bottom",
-          scrub: true,
-        }
-      });
-
-      // 1. Car moves across the screen
-      tl.to(carRef.current, {
-        x: endX,
-        ease: "power2.inOut",
-        onUpdate: function () {
-          const carX = gsap.getProperty(carRef.current, "x") as number;
-          const scrubberPos = carX + carWidth * 0.4; // Trail ends near middle of car
-
-          if (valueRect) {
-            letters.forEach((letter, i) => {
-              const letterX = valueRect.left + letterOffsets[i];
-              // As the car trail crosses each letter's X position, reveal the letter
-              if (scrubberPos >= letterX) {
-                gsap.to(letter, {
-                  opacity: 1,
-                  y: 0,
-                  scale: 1,
-                  filter: 'blur(0px)',
-                  duration: 0.3,
-                  overwrite: 'auto'
-                });
-              } else {
-                gsap.to(letter, {
-                  opacity: 0,
-                  y: 40,
-                  scale: 0.8,
-                  filter: 'blur(10px)',
-                  duration: 0.3,
-                  overwrite: 'auto'
-                });
+        // ─── CAR MOVEMENT (matching reference exactly) ───
+        // Reference: gsap.to(car, { scrollTrigger: {trigger:".section", start:"top top", end:"bottom top", scrub:true, pin:".track"}, x: endX, ease:"none", onUpdate... })
+        gsap.to(car, {
+          scrollTrigger: {
+            trigger: section,
+            start: "top top",
+            end: "bottom top",
+            scrub: true,
+            pin: track,
+            onUpdate: (self) => {
+              if (progressBar) {
+                gsap.set(progressBar, { scaleX: self.progress });
               }
-            });
-          }
+            }
+          },
+          x: endX,
+          ease: "none",
+          onUpdate: function () {
+            const carX = (gsap.getProperty(car, "x") as number) + carWidth / 2;
 
-          gsap.set(trailRef.current, { width: scrubberPos });
-        },
-      }, 0);
+            // Letter reveal
+            if (valueRect) {
+              letters.forEach((letter, i) => {
+                const letterX = valueRect.left + letterOffsets[i];
+                if (carX >= letterX) {
+                  letter.style.opacity = "1";
+                } else {
+                  letter.style.opacity = "0";
+                }
+              });
+            }
 
-      // Explosion of cards
-      const tl2 = gsap.timeline({
-        scrollTrigger: {
-          trigger: sectionRef.current,
-          start: "top top", // Explode right alongside the car's movement
-          end: "bottom bottom",
-          scrub: true,
-        }
+            // Trail follows the car
+            gsap.set(trail, { width: carX });
+          },
+        });
+
+        // ─── STAT BOXES (separate ScrollTriggers, pixel-based, matching reference) ───
+        gsap.to(box1Ref.current, {
+          scrollTrigger: {
+            trigger: section,
+            start: "top+=400 top",
+            end: "top+=600 top",
+            scrub: true,
+          },
+          opacity: 1, y: 0, scale: 1,
+        });
+
+        gsap.to(box2Ref.current, {
+          scrollTrigger: {
+            trigger: section,
+            start: "top+=600 top",
+            end: "top+=800 top",
+            scrub: true,
+          },
+          opacity: 1, y: 0, scale: 1,
+        });
+
+        gsap.to(box3Ref.current, {
+          scrollTrigger: {
+            trigger: section,
+            start: "top+=800 top",
+            end: "top+=1000 top",
+            scrub: true,
+          },
+          opacity: 1, y: 0, scale: 1,
+        });
+
+        gsap.to(box4Ref.current, {
+          scrollTrigger: {
+            trigger: section,
+            start: "top+=1000 top",
+            end: "top+=1200 top",
+            scrub: true,
+          },
+          opacity: 1, y: 0, scale: 1,
+        });
+
+        // ─── Hero Intro Animations (time-based, on page load) ───
+        const heroTl = gsap.timeline({ defaults: { ease: "power3.out" } });
+        heroTl.from(".hero-title span", {
+          y: 80,
+          opacity: 0,
+          filter: "blur(8px)",
+          stagger: 0.04,
+          duration: 0.7,
+          delay: 0.3,
+        });
+        heroTl.from(".hero-stats .stat-item", {
+          y: 40,
+          opacity: 0,
+          stagger: 0.12,
+          duration: 0.5,
+          ease: "power2.out",
+        }, "-=0.3");
+        heroTl.from(".hero-scroll-indicator", {
+          opacity: 0,
+          y: 20,
+          duration: 0.6,
+        }, "-=0.2");
+
+        // Refresh ScrollTrigger after all setup
+        ScrollTrigger.refresh();
       });
 
-      // Reset cards to center behind the path
-      gsap.set([box1Ref.current, box2Ref.current, box3Ref.current, box4Ref.current], {
-        xPercent: -50,
-        yPercent: -50,
-        left: "50%",
-        top: "50%",
-        scale: 0.2,
-        opacity: 0,
-        rotation: () => gsap.utils.random(-15, 15)
-      });
+      return () => ctx.revert();
+    }, 100);
 
-      // Animate explosion to the four corners
-      tl2.to([box1Ref.current, box2Ref.current, box3Ref.current, box4Ref.current], {
-        opacity: 1,
-        scale: 1,
-        rotation: 0,
-        duration: 2,
-        ease: "power3.out"
-      }, 0);
-
-      tl2.to(box1Ref.current, { top: "20%", left: "15%", duration: 2, ease: "power3.out" }, 0);
-      tl2.to(box2Ref.current, { top: "20%", left: "85%", duration: 2, ease: "power3.out" }, 0);
-      tl2.to(box3Ref.current, { top: "80%", left: "15%", duration: 2, ease: "power3.out" }, 0);
-      tl2.to(box4Ref.current, { top: "80%", left: "85%", duration: 2, ease: "power3.out" }, 0);
-
-      // Initial Hero Load Animations
-      const heroTl = gsap.timeline();
-      heroTl.from(".hero-headline", {
-        y: 60,
-        opacity: 0,
-        filter: "blur(10px)",
-        stagger: 0.1,
-        duration: 1,
-        ease: "power3.out",
-        delay: 0.2
-      });
-      heroTl.from(".hero-subtitle", {
-        opacity: 0,
-        y: 20,
-        duration: 0.8,
-        ease: "power2.out",
-      }, "-=0.5");
-      heroTl.from(".hero-scroll", {
-        opacity: 0,
-        duration: 1,
-      }, "-=0.3");
-
-    });
-
-    return () => ctx.revert();
-  }, [windowDimensions.width]);
+    return () => clearTimeout(timer);
+  }, [isClient]);
 
   const setLetterRef = (index: number) => (el: HTMLSpanElement | null) => {
     lettersRef.current[index] = el;
   };
 
-  // 3D Tilt Hover Effect for Cards
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>, ref: React.RefObject<HTMLDivElement | null>) => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const x = e.clientX - rect.left; // x position within the element.
-    const y = e.clientY - rect.top;  // y position within the element.
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-    const tiltX = ((y - centerY) / centerY) * -15; // Max 15 degree tilt
-    const tiltY = ((x - centerX) / centerX) * 15;
-
-    gsap.to(ref.current, {
-      duration: 0.3,
-      rotateX: tiltX,
-      rotateY: tiltY,
-      transformPerspective: 1000,
-      ease: "power2.out",
-    });
-  };
-
-  const handleMouseLeave = (e: React.MouseEvent<HTMLDivElement>, ref: React.RefObject<HTMLDivElement | null>) => {
-    if (!ref.current) return;
-    gsap.to(ref.current, {
-      duration: 0.7,
-      rotateX: 0,
-      rotateY: 0,
-      ease: "elastic.out(1, 0.3)",
-    });
-  };
-
-  const str = "WELCOME TO ITZFIZZ";
+  const heroText = "W E L C O M E   I T Z F I Z Z";
 
   return (
     <>
-      {/* Custom Cursor */}
-      <div
-        ref={cursorRef}
-        className="fixed top-0 left-0 w-10 h-10 border border-[#0ff] rounded-full pointer-events-none z-[9999] opacity-0 md:opacity-100 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 mix-blend-screen"
-      ></div>
-      <div
-        ref={cursorDotRef}
-        className="fixed top-0 left-0 w-2 h-2 bg-[#0ff] rounded-full pointer-events-none z-[10000] opacity-0 md:opacity-100 -translate-x-1/2 -translate-y-1/2 shadow-[0_0_10px_#0ff]"
-      ></div>
-
-      {/* Navigation Bar */}
-      <nav className="fixed top-0 left-0 w-full z-[100] px-6 py-4 flex justify-between items-center backdrop-blur-md bg-black/20 border-b border-white/5">
-        <div className="flex items-center gap-2" onMouseEnter={() => gsap.to(cursorRef.current, { scale: 1.5, borderColor: '#fff' })} onMouseLeave={() => gsap.to(cursorRef.current, { scale: 1, borderColor: '#0ff' })}>
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#0ff] to-[#00f] flex items-center justify-center font-black text-white p-1">V</div>
-          <span className="text-xl font-bold tracking-tighter text-white">VELOCITY</span>
-        </div>
-        <div className="hidden md:flex items-center gap-8">
-          <a href="#" className="text-sm font-medium text-white/70 hover:text-white transition-colors" onMouseEnter={() => gsap.to(cursorRef.current, { scale: 1.5, borderColor: '#fff' })} onMouseLeave={() => gsap.to(cursorRef.current, { scale: 1, borderColor: '#0ff' })}>MODELS</a>
-          <a href="#" className="text-sm font-medium text-white/70 hover:text-white transition-colors" onMouseEnter={() => gsap.to(cursorRef.current, { scale: 1.5, borderColor: '#fff' })} onMouseLeave={() => gsap.to(cursorRef.current, { scale: 1, borderColor: '#0ff' })}>TECHNOLOGY</a>
-          <a href="#" className="text-sm font-medium text-white/70 hover:text-white transition-colors" onMouseEnter={() => gsap.to(cursorRef.current, { scale: 1.5, borderColor: '#fff' })} onMouseLeave={() => gsap.to(cursorRef.current, { scale: 1, borderColor: '#0ff' })}>MAPPING</a>
-          <a href="#" className="text-sm font-medium text-white/70 hover:text-white transition-colors" onMouseEnter={() => gsap.to(cursorRef.current, { scale: 1.5, borderColor: '#fff' })} onMouseLeave={() => gsap.to(cursorRef.current, { scale: 1, borderColor: '#0ff' })}>SUPPORT</a>
-        </div>
-        <button className="px-5 py-2 rounded-full bg-white text-black text-xs font-bold tracking-widest uppercase hover:bg-[#0ff] transition-colors" onMouseEnter={() => gsap.to(cursorRef.current, { scale: 1.5, borderColor: '#fff' })} onMouseLeave={() => gsap.to(cursorRef.current, { scale: 1, borderColor: '#0ff' })}>
-          RESERVE NOW
-        </button>
-      </nav>
-
-      {/* Intro Hero Section */}
-      <div ref={heroContainerRef} className="h-screen w-full flex flex-col items-center justify-center bg-[#050505] relative z-10 overflow-hidden" style={{ perspective: '1000px' }}>
-
-        {/* Animated Cyber Grid (Now with Parallax Ref) */}
-        <div ref={heroGridRef} className="absolute inset-[-100%] bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_40%_40%_at_50%_50%,#000_10%,transparent_100%)]"></div>
-
-        {/* Ambient Glow */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(0,180,255,0.1)_0,transparent_40%)]"></div>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(255,0,128,0.1)_0,transparent_40%)]"></div>
-
-        <h1 className="hero-headline text-7xl md:text-9xl font-black mb-4 tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white via-gray-200 to-gray-800 drop-shadow-[0_0_20px_rgba(255,255,255,0.1)] relative z-10 uppercase">
-          Velocity
-        </h1>
-        <p className="hero-subtitle text-gray-400 text-lg md:text-xl tracking-[0.3em] uppercase mb-16 font-semibold relative z-10">
-          Enter The Fast Lane
-        </p>
-
-        {/* Scroll Indicator */}
-        <div className="hero-scroll flex flex-col items-center gap-3 relative z-10 opacity-70">
-          <div className="w-[1px] h-[60px] bg-gradient-to-b from-transparent via-white to-transparent animate-pulse delay-75"></div>
-          <span className="text-[10px] uppercase font-bold tracking-[0.4em] text-white/50">Scroll</span>
-        </div>
+      {/* Scroll Progress Bar */}
+      <div className="scroll-progress-container">
+        <div ref={progressBarRef} className="scroll-progress-bar"></div>
       </div>
 
-      <div ref={sectionRef} className="relative h-[250vh] bg-[#020202]">
-        <div ref={trackRef} className="h-screen w-full flex flex-col items-center justify-center bg-transparent overflow-hidden relative">
+      {/* Custom Cursor */}
+      <div ref={cursorRef} className="custom-cursor"></div>
+      <div ref={cursorDotRef} className="custom-cursor-dot"></div>
 
-          {/* Main Road/Track Container */}
-          <div className="w-full h-[400px] bg-gradient-to-b from-[#000] via-[#050505] to-[#000] relative flex items-center border-y border-white/5 z-[2] shadow-[0_0_100px_rgba(0,0,0,1)]">
+      {/* ─── HERO SECTION (Above the Fold) ─── */}
+      <section className="hero-section">
+        {/* Ambient background glow */}
+        <div className="hero-bg-glow"></div>
 
-            {/* Speed Lines Background */}
-            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjcGF0dGVybikiIC8+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHdpZHRoPSI0MCIgaGVpZ2h0PSI0IiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iMSIgZmlsbD0icmdiYSgyNTUsIDI1NSwgMjU1LCAwLjAxKSIgLz48L3BhdHRlcm4+PC9kZWZzPjwvc3ZnPg==')] opacity-50"></div>
+        {/* Animated Grid */}
+        <div className="hero-grid"></div>
 
-            {/* Glowing Trail Behind Car */}
+        {/* Particle dots — deterministic positions to avoid hydration mismatch */}
+        <div className="hero-particles">
+          {[
+            { l: 12, t: 8, d: 0, du: 4 }, { l: 85, t: 15, d: 1.2, du: 5.5 },
+            { l: 35, t: 72, d: 2.4, du: 3.8 }, { l: 68, t: 45, d: 0.8, du: 6 },
+            { l: 5, t: 55, d: 3.1, du: 4.2 }, { l: 92, t: 82, d: 1.6, du: 5 },
+            { l: 48, t: 20, d: 4.0, du: 3.5 }, { l: 22, t: 90, d: 0.4, du: 6.5 },
+            { l: 75, t: 35, d: 2.8, du: 4.8 }, { l: 55, t: 65, d: 3.6, du: 5.2 },
+            { l: 8, t: 30, d: 1.0, du: 4.5 }, { l: 62, t: 88, d: 2.0, du: 3.2 },
+            { l: 42, t: 12, d: 4.5, du: 5.8 }, { l: 88, t: 52, d: 0.6, du: 6.2 },
+            { l: 18, t: 42, d: 3.4, du: 4.0 }, { l: 78, t: 78, d: 1.8, du: 3.6 },
+            { l: 30, t: 58, d: 2.6, du: 5.4 }, { l: 95, t: 25, d: 4.2, du: 4.4 },
+            { l: 52, t: 95, d: 0.2, du: 6.8 }, { l: 15, t: 68, d: 3.8, du: 3.4 },
+          ].map((p, i) => (
             <div
-              ref={trailRef}
-              className="h-full absolute top-0 left-0 z-[1] w-0 bg-[linear-gradient(90deg,transparent,rgba(0,255,255,0.1)_50%,rgba(0,255,255,0.3)_100%)] mix-blend-screen transition-all"
-              style={{ borderRight: '1px solid #0ff', boxShadow: '20px 0 60px -10px #0ff' }}
-            ></div>
+              key={i}
+              className="particle"
+              style={{
+                left: `${p.l}%`,
+                top: `${p.t}%`,
+                animationDelay: `${p.d}s`,
+                animationDuration: `${p.du}s`,
+              }}
+            />
+          ))}
+        </div>
 
-            {/* Premium Text Masked by Car */}
-            <div
-              ref={valueTextRef}
-              className="absolute left-1/2 top-[50%] -translate-x-1/2 -translate-y-1/2 z-[5] flex gap-[1rem] select-none w-max"
-              style={{ fontSize: '6vw', fontWeight: '900', letterSpacing: '-0.02em', height: 'auto', display: 'flex', alignItems: 'center' }}
-            >
-              {"WELCOME TO ITZFIZZ".split('').map((char, i) => (
+        {/* Nav */}
+        <nav className="hero-nav">
+          <div className="nav-brand">
+            <div className="nav-logo">V</div>
+            <span className="nav-title">VELOCITY</span>
+          </div>
+          <div className="nav-links">
+            <a href="#">Models</a>
+            <a href="#">Technology</a>
+            <a href="#">Mapping</a>
+            <a href="#">Support</a>
+          </div>
+          <button className="nav-cta magnetic-btn">Reserve Now</button>
+        </nav>
+
+        {/* Hero Headline — letter-spaced, staggered reveal */}
+        <div className="hero-content">
+          <div className="hero-subtitle">NEXT-GEN PERFORMANCE</div>
+          <h1 className="hero-title">
+            {heroText.split('').map((char, i) => (
+              <span key={i} style={{ display: 'inline-block', minWidth: char === ' ' ? '0.5em' : 'auto' }}>
+                {char === ' ' ? '\u00A0' : char}
+              </span>
+            ))}
+          </h1>
+
+          {/* Impact Metrics / Statistics */}
+          <div className="hero-stats">
+            <div className="stat-item">
+              <span className="stat-number">58%</span>
+              <span className="stat-label">Higher Peak Performance</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-number">23%</span>
+              <span className="stat-label">Faster Acceleration Velocity</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-number">27%</span>
+              <span className="stat-label">Improved Aero Efficiency</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-number">40%</span>
+              <span className="stat-label">Better Downforce Control</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Scroll Indicator */}
+        <div className="hero-scroll-indicator">
+          <div className="scroll-mouse">
+            <div className="scroll-wheel"></div>
+          </div>
+          <span>SCROLL TO EXPLORE</span>
+        </div>
+      </section>
+
+      {/* ─── SCROLL ANIMATION SECTION ─── */}
+      <div ref={sectionRef} className="scroll-section">
+        <div ref={trackRef} className="track">
+          {/* Road */}
+          <div className="road" id="road">
+            {/* Lane markings */}
+            <div className="road-lane-top"></div>
+            <div className="road-lane-center"></div>
+            <div className="road-lane-bottom"></div>
+
+            {/* Green Trail */}
+            <div ref={trailRef} className="trail"></div>
+
+            {/* Car */}
+            <img
+              ref={carRef}
+              src="/car.png"
+              alt="car"
+              className="car"
+            />
+
+            {/* Letter Reveal Text */}
+            <div ref={valueTextRef} className="value-text">
+              {"WELCOME ITZFIZZ".split('').map((char, i) => (
                 <span
                   key={i}
                   ref={setLetterRef(i)}
-                  className="text-white opacity-0 blur-[10px] translate-y-[40px] scale-[0.8] whitespace-pre"
-                  style={{ textShadow: '0 0 40px rgba(255,255,255,0.4)', minWidth: char === ' ' ? '1.5vw' : 'auto' }}
+                  className="value-letter"
+                  style={{ minWidth: char === ' ' ? '0.8em' : 'auto' }}
                 >
-                  {char}
+                  {char === ' ' ? '\u00A0' : char}
                 </span>
               ))}
             </div>
-
-            {/* Updated Car Image Wrapper - Flex Center */}
-            <div
-              ref={carRef}
-              className="absolute left-0 top-0 h-full flex items-center z-10 will-change-transform"
-            >
-              <img
-                src="/sports-car.png"
-                alt="Premium Sports Car"
-                className="object-contain drop-shadow-[50px_20px_30px_rgba(0,0,0,0.9)] scale-110"
-                style={{ height: '220px', width: 'auto' }}
-              />
-            </div>
           </div>
 
-          {/* Background Ambient Glow around Track */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100%] h-[600px] bg-[#00e5ff]/5 blur-[200px] rounded-full pointer-events-none z-[0] mix-blend-screen"></div>
-
-          {/* Four Pop-out Info Cards */}
-          <div ref={box1Ref} className="card-corner border-t-[#00f3ff]/30 group transition-transform duration-200 ease-out" onMouseMove={(e) => handleMouseMove(e, box1Ref)} onMouseLeave={(e) => handleMouseLeave(e, box1Ref)}>
-            <div className="absolute -inset-[1px] rounded-[24px] bg-gradient-to-b from-[#00f3ff]/20 to-transparent opacity-0 transition-opacity duration-300 pointer-events-none group-hover:opacity-100"></div>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-14 h-14 rounded-full bg-[#00f3ff]/10 text-[#00f3ff] flex items-center justify-center font-black text-2xl shadow-[0_0_30px_rgba(0,243,255,0.2)] border border-[#00f3ff]/30 relative mix-blend-screen group-hover:scale-110 transition-transform">1</div>
-              <span className="text-[64px] font-black tracking-tighter text-white/90 drop-shadow-xl font-mono leading-none">58<span className="text-3xl text-[#00f3ff]">%</span></span>
-            </div>
-            <span className="text-sm text-gray-400 font-medium uppercase tracking-widest leading-relaxed">Performance Boost</span>
+          {/* Stat Boxes (positioned absolutely over the track) */}
+          <div ref={box1Ref} className="text-box box-yellow" style={{ top: '5%', right: '30%' }}>
+            <span className="num-box">58%</span>
+            <span className="box-desc">Increase in pick up point use</span>
           </div>
-
-          <div ref={box2Ref} className="card-corner border-t-[#fc4a1a]/30 group transition-transform duration-200 ease-out" onMouseMove={(e) => handleMouseMove(e, box2Ref)} onMouseLeave={(e) => handleMouseLeave(e, box2Ref)}>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-14 h-14 rounded-full bg-[#fc4a1a]/10 text-[#fc4a1a] flex items-center justify-center font-black text-2xl shadow-[0_0_30px_rgba(252,74,26,0.2)] border border-[#fc4a1a]/30 relative mix-blend-screen group-hover:scale-110 transition-transform">2</div>
-              <span className="text-[64px] font-black tracking-tighter text-white/90 drop-shadow-xl font-mono leading-none">2.4<span className="text-3xl text-[#fc4a1a]">s</span></span>
-            </div>
-            <span className="text-sm text-gray-400 font-medium uppercase tracking-widest leading-relaxed">0-60 Mph Acceleration</span>
+          <div ref={box2Ref} className="text-box box-blue" style={{ bottom: '5%', right: '35%' }}>
+            <span className="num-box">23%</span>
+            <span className="box-desc">Decreased in customer phone calls</span>
           </div>
-
-          <div ref={box3Ref} className="card-corner border-t-[#11998e]/30 group transition-transform duration-200 ease-out" onMouseMove={(e) => handleMouseMove(e, box3Ref)} onMouseLeave={(e) => handleMouseLeave(e, box3Ref)}>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-14 h-14 rounded-full bg-[#11998e]/10 text-[#11998e] flex items-center justify-center font-black text-2xl shadow-[0_0_30px_rgba(17,153,142,0.2)] border border-[#11998e]/30 relative mix-blend-screen group-hover:scale-110 transition-transform">3</div>
-              <span className="text-[64px] font-black tracking-tighter text-white/90 drop-shadow-xl font-mono leading-none">99<span className="text-3xl text-[#11998e]">%</span></span>
-            </div>
-            <span className="text-sm text-gray-400 font-medium uppercase tracking-widest leading-relaxed">Aerodynamic Efficiency</span>
+          <div ref={box3Ref} className="text-box box-dark" style={{ top: '5%', right: '10%' }}>
+            <span className="num-box">27%</span>
+            <span className="box-desc">Increase in pick up point use</span>
           </div>
-
-          <div ref={box4Ref} className="card-corner border-t-[#b224ef]/30 group transition-transform duration-200 ease-out" onMouseMove={(e) => handleMouseMove(e, box4Ref)} onMouseLeave={(e) => handleMouseLeave(e, box4Ref)}>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-14 h-14 rounded-full bg-[#b224ef]/10 text-[#b224ef] flex items-center justify-center font-black text-2xl shadow-[0_0_30px_rgba(178,36,239,0.2)] border border-[#b224ef]/30 relative mix-blend-screen group-hover:scale-110 transition-transform">4</div>
-              <span className="text-[64px] font-black tracking-tighter text-white/90 drop-shadow-xl font-mono leading-none">12<span className="text-3xl text-[#b224ef]">k</span></span>
-            </div>
-            <span className="text-sm text-gray-400 font-medium uppercase tracking-widest leading-relaxed">Max RPM Power</span>
-          </div>
-
-        </div>
-      </div>
-
-      <div className="h-[70vh] bg-[#020202] flex flex-col items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,255,255,0.03)_0,transparent_70%)]"></div>
-        <h2 className="text-4xl md:text-6xl font-black text-white/90 uppercase tracking-[0.1em] relative z-10 mb-6 drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-          Experience Velocity
-        </h2>
-        <p className="text-gray-400 text-sm md:text-md tracking-[0.2em] uppercase mb-10 font-medium relative z-10 max-w-xl text-center px-4">
-          Reserve your model today and join the elite future of aerodynamics.
-        </p>
-
-        <button className="relative px-8 py-4 bg-transparent border border-[#0ff] text-[#0ff] font-bold uppercase tracking-widest text-sm hover:bg-[#0ff] hover:text-black transition-all duration-300 shadow-[0_0_20px_rgba(0,255,255,0.2)] hover:shadow-[0_0_40px_rgba(0,255,255,0.6)] z-10" onMouseEnter={() => gsap.to(cursorRef.current, { scale: 1.5, borderColor: '#fff' })} onMouseLeave={() => gsap.to(cursorRef.current, { scale: 1, borderColor: '#0ff' })}>
-          Configure Yours
-        </button>
-
-        {/* Footer Links */}
-        <div className="absolute bottom-0 left-0 w-full p-8 flex flex-col md:flex-row justify-between items-center border-t border-white/5 bg-black/50 backdrop-blur-sm z-10">
-          <div className="flex items-center gap-2 mb-4 md:mb-0">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#0ff] to-[#00f] flex items-center justify-center font-black text-white p-[2px] text-[10px]">V</div>
-            <span className="text-sm font-bold tracking-tighter text-white">VELOCITY MOTORS</span>
-          </div>
-
-          <div className="flex gap-6 text-xs font-semibold tracking-widest text-gray-500 uppercase">
-            <a href="#" className="hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white transition-colors">Terms</a>
-            <a href="#" className="hover:text-white transition-colors">Contact</a>
-            <a href="https://github.com/paraschaturvedi/car-scroll-animation" target="_blank" rel="noreferrer" className="hover:text-[#0ff] transition-colors">Original Ref</a>
+          <div ref={box4Ref} className="text-box box-orange" style={{ bottom: '5%', right: '12.5%' }}>
+            <span className="num-box">40%</span>
+            <span className="box-desc">Decreased in customer phone calls</span>
           </div>
         </div>
       </div>
+
+      {/* ─── FOOTER SECTION ─── */}
+      <footer className="site-footer">
+        <div className="footer-inner">
+          <div className="footer-brand">
+            <div className="footer-logo">V</div>
+            <span>VELOCITY MOTORS</span>
+          </div>
+          <p className="footer-tagline">Reserve your model today and join the elite future of aerodynamics.</p>
+          <div className="footer-links">
+            <a href="#">Privacy</a>
+            <a href="#">Terms</a>
+            <a href="#">Contact</a>
+            <a href="https://paraschaturvedi.github.io/car-scroll-animation" target="_blank" rel="noreferrer">Original Ref</a>
+          </div>
+          <p className="footer-copy">&copy; 2026 Velocity Motors. All rights reserved.</p>
+        </div>
+      </footer>
     </>
   );
 }
