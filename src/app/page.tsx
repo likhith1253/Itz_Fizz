@@ -339,7 +339,7 @@ export default function Home() {
             {/* Car */}
             <img
               ref={carRef}
-              src="/car.png"
+              src="/Itz_Fizz/car.png"
               alt="car"
               className="car"
             />
